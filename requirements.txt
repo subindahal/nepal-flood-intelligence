@@ -1,0 +1,6 @@
+streamlit==1.63.0
+pandas
+pymssql
+folium
+streamlit-folium
+requests
