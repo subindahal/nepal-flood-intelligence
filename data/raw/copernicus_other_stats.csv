@@ -1,0 +1,12 @@
+product_id,group_name,category,total_value,affected_value,unit
+2851,Landslide,None,NA,111.1,ha
+2851,Facilities,Power plant constructions,0.8,0.8,ha
+2852,Landslide,None,NA,129.4,ha
+2852,Facilities,Dams,0.2,0.2,ha
+2868,Landslide,None,NA,701.5,ha
+2868,Facilities,Dams,0.3,0.3,km
+2868,Facilities,Power plant constructions,31.9,27.0,ha
+2868,Facilities,"Aqueducts, irrigation and cultivation waterworks",0.2,0.2,km
+2868,Facilities,"Heavy industrial plants, not elsewhere classified",0.5,0.5,ha
+2868,Facilities,Other civil engineering works not elsewhere classified,5.9,5.9,ha
+2886,Landslide,None,NA,479.2,ha

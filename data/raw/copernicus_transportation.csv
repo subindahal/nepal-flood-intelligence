@@ -1,0 +1,18 @@
+product_id,category,total_value,affected_value,unit
+2851,Cart Track,2.8,1.1,km
+2851,Local Road,3.3,1.1,km
+2851,Primary Road,5.4,5.4,km
+2851,Bridges and elevated highways,5,5,
+2852,Cart Track,4.3,4.3,km
+2852,Local Road,0.6,0.6,km
+2852,Primary Road,4.8,4.8,km
+2852,Bridges and elevated highways,1,1,
+2868,Cart Track,96.3,37.1,km
+2868,Local Road,19.6,6.1,km
+2868,Primary Road,16.1,6.6,km
+2868,Bridges and elevated highways,26,26,
+2886,Highways,8.8,2.5,km
+2886,Cart Track,76.0,8.4,km
+2886,Local Road,5.7,0.9,km
+2886,Primary Road,15.8,1.9,km
+2886,Bridges and elevated highways,3.9,3.7,km
