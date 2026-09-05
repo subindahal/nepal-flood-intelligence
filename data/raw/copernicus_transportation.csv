@@ -11,8 +11,8 @@ product_id,category,total_value,affected_value,unit
 2868,Local Road,19.6,6.1,km
 2868,Primary Road,16.1,6.6,km
 2868,Bridges and elevated highways,26,26,
-2886,Highways,8.8,2.5,km
-2886,Cart Track,76.0,8.4,km
-2886,Local Road,5.7,0.9,km
-2886,Primary Road,15.8,1.9,km
-2886,Bridges and elevated highways,3.9,3.7,km
+2887,Highways,8.8,3.0,km
+2887,Cart Track,76.0,13.6,km
+2887,Local Road,5.7,0.9,km
+2887,Primary Road,15.8,2.1,km
+2887,Bridges and elevated highways,3.9,3.7,km
