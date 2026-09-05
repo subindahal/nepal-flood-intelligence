@@ -213,9 +213,9 @@ for aoi in aois:
         "monitoring_number": monitoring_number,
         "version_number": version_number,
         "latitude": latitude,
-        "longitude": longitude
+        "longitude": longitude,
+        "aoi_extent_wkt": aoi_extent 
     })
-
 
     # ========================================================
     # PRODUCT STATISTICS

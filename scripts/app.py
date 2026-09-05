@@ -44,6 +44,42 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 # ============================================================
+# HELPER FUNCTION: CONVERT WKT POLYGON FOR FOLIUM
+# ============================================================
+
+def wkt_to_folium_coordinates(wkt_polygon):
+
+    if pd.isna(wkt_polygon):
+        return []
+
+    # Remove the POLYGON wrapper.
+    coordinate_text = (
+        str(wkt_polygon)
+        .replace("POLYGON ((", "")
+        .replace("POLYGON((", "")
+        .replace("))", "")
+    )
+
+    coordinates = []
+
+    for pair in coordinate_text.split(","):
+
+        values = pair.strip().split()
+
+        if len(values) < 2:
+            continue
+
+        longitude = float(values[0])
+        latitude = float(values[1])
+
+        # Folium expects latitude first, longitude second.
+        coordinates.append(
+            [latitude, longitude]
+        )
+
+    return coordinates
+
+# ============================================================
 # HELPER FUNCTION: RUN SQL QUERY
 # ============================================================
 
@@ -89,7 +125,8 @@ def load_sql_data():
     SELECT
         s.*,
         p.latitude,
-        p.longitude
+        p.longitude,
+        p.aoi_extent_wkt
     FROM vw_copernicus_aoi_summary AS s
     INNER JOIN copernicus_products AS p
         ON s.aoi_name = p.aoi_name
@@ -293,7 +330,8 @@ def load_csv_data():
             "product_id",
             "aoi_name",
             "latitude",
-            "longitude"
+            "longitude",
+            "aoi_extent_wkt"
         ]
     ].copy()
 
@@ -594,41 +632,47 @@ bridge_df = transportation_df[
 # PREPARE HOTSPOT MAP DATA
 # ============================================================
 
+# Sum affected values across all Copernicus built-up categories
+# for each Area of Interest.
+
+builtup_hotspot = (
+    builtup_df
+    .dropna(subset=["affected_value"])
+    .groupby("aoi_name", as_index=False)["affected_value"]
+    .sum()
+    .rename(
+        columns={
+            "affected_value": "affected_builtup_features"
+        }
+    )
+)
+
+
+# Keep AOI coordinates and polygon geometry.
+
 hotspot_df = df[
     [
         "aoi_name",
         "latitude",
         "longitude",
-        "residential_buildings_affected"
+        "aoi_extent_wkt"
     ]
 ].copy()
 
 
+hotspot_df = hotspot_df.merge(
+    builtup_hotspot,
+    on="aoi_name",
+    how="left"
+)
+
+
 hotspot_df = hotspot_df.dropna(
     subset=[
-        "latitude",
-        "longitude",
-        "residential_buildings_affected"
+        "aoi_extent_wkt",
+        "affected_builtup_features"
     ]
 )
-
-
-hotspot_df["latitude"] = (
-    hotspot_df["latitude"].astype(float)
-)
-
-hotspot_df["longitude"] = (
-    hotspot_df["longitude"].astype(float)
-)
-
-hotspot_df[
-    "residential_buildings_affected"
-] = (
-    hotspot_df[
-        "residential_buildings_affected"
-    ].astype(float)
-)
-
 
 # ============================================================
 # KPI CALCULATIONS
@@ -739,15 +783,16 @@ with tab1:
     )
 
     st.write(
-        "Circle size represents affected residential buildings. "
-        "Larger circles indicate greater mapped physical impact "
-        "on residential structures."
+    "Polygons represent the Copernicus Areas of Interest. "
+    "Each polygon shows the geographic extent of the mapped area, "
+    "with popups reporting the combined affected value across "
+    "built-up categories."
     )
 
 
     nepal_map = folium.Map(
-        location=[28.3949, 84.1240],
-        zoom_start=7,
+        location=[28.05, 85.20],
+        zoom_start=10.3,
         tiles="OpenStreetMap",
         control_scale=True
     )
@@ -755,40 +800,35 @@ with tab1:
 
     for _, row in hotspot_df.iterrows():
 
-        marker_buildings = row[
-            "residential_buildings_affected"
+        polygon_coordinates = wkt_to_folium_coordinates(
+            row["aoi_extent_wkt"]
+        )
+        if not polygon_coordinates:
+            continue
+
+        affected_value = row[
+            "affected_builtup_features"
         ]
 
-        marker_radius = max(
-            7,
-            min(
-                25,
-                marker_buildings ** 0.5 / 2
-            )
-        )
-
-
-        folium.CircleMarker(
-            location=[
-                row["latitude"],
-                row["longitude"]
-            ],
-            radius=marker_radius,
+        folium.Polygon(
+            locations=polygon_coordinates,
+            color='red',
+            fill_color='red',
             tooltip=(
                 f'{row["aoi_name"]} | '
-                f'Affected buildings: '
-                f'{marker_buildings:,.0f}'
+                f'Affected built-up features: '
+                f'{affected_value:,.0f}'
             ),
             popup=folium.Popup(
                 html=(
                     f'<b>{row["aoi_name"]}</b><br>'
-                    f'Affected residential buildings: '
-                    f'{marker_buildings:,.0f}'
+                    f'Affected built-up features: '
+                    f'{affected_value:,.0f}'
                 ),
                 max_width=300
             ),
             fill=True,
-            fill_opacity=0.7,
+            fill_opacity=0.35,
             weight=2
         ).add_to(nepal_map)
 
@@ -801,9 +841,9 @@ with tab1:
 
 
     st.caption(
-        "Markers use the centre of each Copernicus AOI extent. "
-        "They do not represent the exact location of individual "
-        "damaged buildings."
+        "Polygon boundaries represent Copernicus Areas of Interest. "
+        "They show the mapped analysis extent, not the exact footprint "
+        "of every damaged structure."
     )
 
 
@@ -812,14 +852,14 @@ with tab1:
     # --------------------------------------------------------
 
     st.markdown(
-        "### Residential Building Impact Ranking"
+        "### Built Environment Impact Ranking"
     )
 
 
     hotspot_ranking = hotspot_df[
         [
             "aoi_name",
-            "residential_buildings_affected"
+            "affected_builtup_features"
         ]
     ].copy()
 
@@ -827,7 +867,7 @@ with tab1:
     hotspot_ranking = (
         hotspot_ranking
         .sort_values(
-            by="residential_buildings_affected",
+            by="affected_builtup_features",
             ascending=False
         )
     )
@@ -837,8 +877,8 @@ with tab1:
         columns={
             "aoi_name":
                 "Area",
-            "residential_buildings_affected":
-                "Affected Residential Buildings"
+            "affected_builtup_features":
+                "Affected Built-Up Buildings"
         }
     )
 

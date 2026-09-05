@@ -199,10 +199,11 @@ with open(
             monitoring_number,
             version_number,
             latitude,
-            longitude
+            longitude,
+            aoi_extent_wkt
         )
         OUTPUT INSERTED.copernicus_product_key
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -240,6 +241,9 @@ with open(
                     row.get("longitude"),
                     "longitude",
                     row.get("aoi_name", "")
+                ),
+                clean_text(
+                    row.get("aoi_extent_wkt")
                 )
             )
         )

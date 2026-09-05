@@ -49,6 +49,7 @@ CREATE TABLE copernicus_products (
     version_number INT,
     latitude DECIMAL(10,6),
     longitude DECIMAL(10,6),
+    aoi_extent_wkt VARCHAR(MAX),
     CONSTRAINT UQ_copernicus_product UNIQUE (product_id)
 );
 GO
