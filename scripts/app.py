@@ -3,6 +3,7 @@ import pandas as pd
 import pymssql
 import folium
 from streamlit_folium import st_folium
+from pathlib import Path
 
 
 # ============================================================
@@ -10,7 +11,7 @@ from streamlit_folium import st_folium
 # ============================================================
 
 st.set_page_config(
-    page_title="Nepal Flood Impact Analysis",
+    page_title="🇳🇵 Nepal Flood Impact Analysis",
     layout="wide"
 )
 
@@ -23,10 +24,23 @@ server = "localhost"
 port = 1433
 database = "nepal_flood"
 username = "sa"
-password = st.secrets ["database"]["password"]
+data_source = st.secrets["app"]["data_source"]
+
+password = None
+
+if data_source == "sql":
+    password = st.secrets["database"]["password"]
 
 
-import pydeck as pdk
+# ============================================================
+# DATA SOURCE SETUP
+# ============================================================
+
+data_source = str(data_source).strip().lower()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 # ============================================================
@@ -66,99 +80,84 @@ def run_query(query):
 
 
 # ============================================================
-# SQL QUERIES
+# LOAD DATA FROM SQL SERVER
 # ============================================================
 
-summary_query = """
-SELECT
-    s.*,
-    p.latitude,
-    p.longitude
-FROM vw_copernicus_aoi_summary AS s
-INNER JOIN copernicus_products AS p
-    ON s.aoi_name = p.aoi_name
-ORDER BY s.population_affected_pct DESC;
-"""
+def load_sql_data():
+
+    summary_query = """
+    SELECT
+        s.*,
+        p.latitude,
+        p.longitude
+    FROM vw_copernicus_aoi_summary AS s
+    INNER JOIN copernicus_products AS p
+        ON s.aoi_name = p.aoi_name
+    ORDER BY s.population_affected_pct DESC;
+    """
 
 
-builtup_query = """
-SELECT
-    p.aoi_name,
-    b.category,
-    b.total_value,
-    b.affected_value,
-    b.unit
-FROM copernicus_products AS p
-INNER JOIN copernicus_builtup AS b
-    ON p.copernicus_product_key =
-       b.copernicus_product_key
-ORDER BY
-    p.aoi_name,
-    b.category;
-"""
+    builtup_query = """
+    SELECT
+        p.aoi_name,
+        b.category,
+        b.total_value,
+        b.affected_value,
+        b.unit
+    FROM copernicus_products AS p
+    INNER JOIN copernicus_builtup AS b
+        ON p.copernicus_product_key =
+           b.copernicus_product_key
+    ORDER BY
+        p.aoi_name,
+        b.category;
+    """
 
 
-transportation_query = """
-SELECT
-    p.aoi_name,
-    t.category,
-    t.total_value,
-    t.affected_value,
-    t.unit
-FROM copernicus_products AS p
-INNER JOIN copernicus_transportation AS t
-    ON p.copernicus_product_key =
-       t.copernicus_product_key
-ORDER BY
-    p.aoi_name,
-    t.category;
-"""
+    transportation_query = """
+    SELECT
+        p.aoi_name,
+        t.category,
+        t.total_value,
+        t.affected_value,
+        t.unit
+    FROM copernicus_products AS p
+    INNER JOIN copernicus_transportation AS t
+        ON p.copernicus_product_key =
+           t.copernicus_product_key
+    ORDER BY
+        p.aoi_name,
+        t.category;
+    """
 
 
-landuse_query = """
-SELECT
-    p.aoi_name,
-    l.category,
-    l.total_value,
-    l.affected_value,
-    l.unit
-FROM copernicus_products AS p
-INNER JOIN copernicus_landuse AS l
-    ON p.copernicus_product_key =
-       l.copernicus_product_key
-ORDER BY
-    p.aoi_name,
-    l.category;
-"""
+    landuse_query = """
+    SELECT
+        p.aoi_name,
+        l.category,
+        l.total_value,
+        l.affected_value,
+        l.unit
+    FROM copernicus_products AS p
+    INNER JOIN copernicus_landuse AS l
+        ON p.copernicus_product_key =
+           l.copernicus_product_key
+    ORDER BY
+        p.aoi_name,
+        l.category;
+    """
 
 
-landslide_query = """
-SELECT *
-FROM vw_copernicus_landslide_impact
-ORDER BY landslide_affected_area_ha DESC;
-"""
+    landslide_query = """
+    SELECT *
+    FROM vw_copernicus_landslide_impact
+    ORDER BY landslide_affected_area_ha DESC;
+    """
 
 
-# ============================================================
-# APP HEADER
-# ============================================================
-
-st.title("Nepal Flood Impact Analysis")
-
-st.caption(
-    "Analysis of mapped physical damage, infrastructure impact, "
-    "land impact and population exposure across selected "
-    "Copernicus Areas of Interest."
-)
-
-
-# ============================================================
-# LOAD DATA
-# ============================================================
-
-try:
-
-    df = run_query(summary_query)
+    summary_df = run_query(
+        summary_query
+    )
 
     builtup_df = run_query(
         builtup_query
@@ -176,17 +175,342 @@ try:
         landslide_query
     )
 
+    return (
+        summary_df,
+        builtup_df,
+        transportation_df,
+        landuse_df,
+        landslide_df
+    )
+
+
+# ============================================================
+# LOAD DATA FROM CSV FILES
+# ============================================================
+
+def load_csv_data():
+
+    products = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_products.csv"
+    )
+
+    population = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_population.csv"
+    )
+
+    builtup = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_builtup.csv"
+    )
+
+    transportation = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_transportation.csv"
+    )
+
+    landuse = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_landuse.csv"
+    )
+
+    other_stats = pd.read_csv(
+        RAW_DATA_DIR / "copernicus_other_stats.csv"
+    )
+
+
+    # --------------------------------------------------------
+    # POPULATION SUMMARY
+    # --------------------------------------------------------
+
+    population_summary = population[
+        [
+            "product_id",
+            "total_value",
+            "affected_value"
+        ]
+    ].copy()
+
+    population_summary = population_summary.rename(
+        columns={
+            "total_value":
+                "population_total",
+            "affected_value":
+                "population_affected"
+        }
+    )
+
+
+    # --------------------------------------------------------
+    # RESIDENTIAL BUILDING SUMMARY
+    # --------------------------------------------------------
+
+    residential = builtup[
+        builtup["category"]
+        == "Residential Buildings"
+    ][
+        [
+            "product_id",
+            "total_value",
+            "affected_value"
+        ]
+    ].copy()
+
+    residential = residential.rename(
+        columns={
+            "total_value":
+                "residential_buildings_total",
+            "affected_value":
+                "residential_buildings_affected"
+        }
+    )
+
+
+    # --------------------------------------------------------
+    # LANDSLIDE SUMMARY
+    # --------------------------------------------------------
+
+    landslide = other_stats[
+        other_stats["group_name"]
+        == "Landslide"
+    ][
+        [
+            "product_id",
+            "affected_value"
+        ]
+    ].copy()
+
+    landslide = landslide.rename(
+        columns={
+            "affected_value":
+                "landslide_affected_area_ha"
+        }
+    )
+
+
+    # --------------------------------------------------------
+    # BUILD OVERVIEW DATAFRAME
+    # --------------------------------------------------------
+
+    summary_df = products[
+        [
+            "product_id",
+            "aoi_name",
+            "latitude",
+            "longitude"
+        ]
+    ].copy()
+
+
+    summary_df = summary_df.merge(
+        population_summary,
+        on="product_id",
+        how="left"
+    )
+
+
+    summary_df = summary_df.merge(
+        residential,
+        on="product_id",
+        how="left"
+    )
+
+
+    summary_df = summary_df.merge(
+        landslide,
+        on="product_id",
+        how="left"
+    )
+
+
+    # --------------------------------------------------------
+    # CALCULATE PERCENTAGES
+    # --------------------------------------------------------
+
+    summary_df[
+        "population_affected_pct"
+    ] = (
+        summary_df["population_affected"]
+        / summary_df["population_total"]
+        * 100
+    )
+
+
+    summary_df[
+        "residential_buildings_affected_pct"
+    ] = (
+        summary_df[
+            "residential_buildings_affected"
+        ]
+        / summary_df[
+            "residential_buildings_total"
+        ]
+        * 100
+    )
+
+
+    # --------------------------------------------------------
+    # ADD AOI NAMES TO DETAIL TABLES
+    # --------------------------------------------------------
+
+    product_names = products[
+        [
+            "product_id",
+            "aoi_name"
+        ]
+    ].copy()
+
+
+    builtup_df = product_names.merge(
+        builtup,
+        on="product_id",
+        how="inner"
+    )
+
+
+    transportation_df = product_names.merge(
+        transportation,
+        on="product_id",
+        how="inner"
+    )
+
+
+    landuse_df = product_names.merge(
+        landuse,
+        on="product_id",
+        how="inner"
+    )
+
+
+    landslide_df = product_names.merge(
+        landslide,
+        on="product_id",
+        how="inner"
+    )
+
+
+    # Keep the same columns used by the SQL version.
+
+    builtup_df = builtup_df[
+        [
+            "aoi_name",
+            "category",
+            "total_value",
+            "affected_value",
+            "unit"
+        ]
+    ]
+
+
+    transportation_df = transportation_df[
+        [
+            "aoi_name",
+            "category",
+            "total_value",
+            "affected_value",
+            "unit"
+        ]
+    ]
+
+
+    landuse_df = landuse_df[
+        [
+            "aoi_name",
+            "category",
+            "total_value",
+            "affected_value",
+            "unit"
+        ]
+    ]
+
+
+    landslide_df = landslide_df[
+        [
+            "aoi_name",
+            "landslide_affected_area_ha"
+        ]
+    ]
+
+
+    summary_df = summary_df.sort_values(
+        by="population_affected_pct",
+        ascending=False
+    )
+
+
+    landslide_df = landslide_df.sort_values(
+        by="landslide_affected_area_ha",
+        ascending=False
+    )
+
+
+    return (
+        summary_df,
+        builtup_df,
+        transportation_df,
+        landuse_df,
+        landslide_df
+    )
+
+
+# ============================================================
+# APP HEADER
+# ============================================================
+
+st.title(
+    "🇳🇵 Nepal Flood Impact Analysis"
+)
+
+st.caption(
+    "Analysis of mapped physical damage, infrastructure impact, "
+    "land impact and population exposure across selected "
+    "Copernicus Areas of Interest."
+)
+
+
+# ============================================================
+# LOAD SELECTED DATA SOURCE
+# ============================================================
+
+try:
+
+    if data_source == "sql":
+
+        (
+            df,
+            builtup_df,
+            transportation_df,
+            landuse_df,
+            landslide_df
+        ) = load_sql_data()
+
+    elif data_source == "csv":
+
+        (
+            df,
+            builtup_df,
+            transportation_df,
+            landuse_df,
+            landslide_df
+        ) = load_csv_data()
+
+    else:
+
+        st.error(
+            "Invalid data source. "
+            "Use 'sql' or 'csv'."
+        )
+
+        st.stop()
+
+
 except Exception as error:
 
     st.error(
-        f"Database connection failed: {error}"
+        f"Data loading failed: {error}"
     )
 
     st.stop()
 
 
 # ============================================================
-# CONVERT SQL NUMERIC VALUES
+# CONVERT NUMERIC VALUES
 # ============================================================
 
 summary_numeric_columns = [
@@ -302,23 +626,8 @@ hotspot_df[
 ] = (
     hotspot_df[
         "residential_buildings_affected"
-    ]
-    .astype(float)
+    ].astype(float)
 )
-
-
-# ============================================================
-# MAP MARKER SIZE
-# ============================================================
-
-# Square root scaling prevents Bidur from becoming so large
-# that the smaller AOIs disappear.
-
-hotspot_df["radius"] = (
-    hotspot_df[
-        "residential_buildings_affected"
-    ] ** 0.5
-) * 180
 
 
 # ============================================================
@@ -419,7 +728,7 @@ with tab1:
         "explicitly measured in kilometres. Bridges are excluded "
         "because Copernicus reports inconsistent bridge units."
     )
-with tab1:
+
 
     # --------------------------------------------------------
     # PHYSICAL IMPACT HOTSPOT MAP
@@ -435,7 +744,7 @@ with tab1:
         "on residential structures."
     )
 
-    # Start map at Nepal-wide view
+
     nepal_map = folium.Map(
         location=[28.3949, 84.1240],
         zoom_start=7,
@@ -443,10 +752,10 @@ with tab1:
         control_scale=True
     )
 
-    # Add AOI markers using coordinates from SQL
+
     for _, row in hotspot_df.iterrows():
 
-        affected_buildings = row[
+        marker_buildings = row[
             "residential_buildings_affected"
         ]
 
@@ -454,9 +763,10 @@ with tab1:
             7,
             min(
                 25,
-                affected_buildings ** 0.5 / 2
+                marker_buildings ** 0.5 / 2
             )
         )
+
 
         folium.CircleMarker(
             location=[
@@ -467,13 +777,13 @@ with tab1:
             tooltip=(
                 f'{row["aoi_name"]} | '
                 f'Affected buildings: '
-                f'{affected_buildings:,.0f}'
+                f'{marker_buildings:,.0f}'
             ),
             popup=folium.Popup(
                 html=(
                     f'<b>{row["aoi_name"]}</b><br>'
                     f'Affected residential buildings: '
-                    f'{affected_buildings:,.0f}'
+                    f'{marker_buildings:,.0f}'
                 ),
                 max_width=300
             ),
@@ -482,19 +792,19 @@ with tab1:
             weight=2
         ).add_to(nepal_map)
 
-    # Display the interactive map
+
     st_folium(
         nepal_map,
         width=None,
         height=500
     )
 
+
     st.caption(
         "Markers use the centre of each Copernicus AOI extent. "
         "They do not represent the exact location of individual "
         "damaged buildings."
     )
-
 
 
     # --------------------------------------------------------
@@ -615,8 +925,7 @@ with tab2:
     ] = (
         residential_absolute[
             "residential_buildings_affected"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -658,8 +967,7 @@ with tab2:
     ] = (
         residential_percentage[
             "residential_buildings_affected_pct"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -704,8 +1012,7 @@ with tab2:
     ] = (
         building_types[
             "affected_value"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -778,8 +1085,7 @@ with tab3:
     ] = (
         road_absolute[
             "affected_value"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -823,8 +1129,7 @@ with tab3:
     ] = (
         road_percentage[
             "affected_pct"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -929,8 +1234,7 @@ with tab4:
     ] = (
         landslide_chart[
             "landslide_affected_area_ha"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -978,8 +1282,7 @@ with tab4:
     ] = (
         landuse_chart[
             "affected_value"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -1059,8 +1362,7 @@ with tab5:
     ] = (
         population_absolute[
             "population_affected"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -1102,8 +1404,7 @@ with tab5:
     ] = (
         population_percentage[
             "population_affected_pct"
-        ]
-        .astype(float)
+        ].astype(float)
     )
 
 
@@ -1130,3 +1431,24 @@ with tab5:
         "population while representing a smaller share of its "
         "mapped population, or vice versa."
     )
+
+    # ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.markdown(
+    """
+    <div style="text-align: center;">
+        Developed by <strong>Subin Dahal</strong> ·
+        <a href="https://www.linkedin.com/in/subindahal/" target="_blank">LinkedIn</a> ·
+        <a href="https://github.com/subindahal/nepal-flood-intelligence"
+           target="_blank">GitHub</a><br>
+        Data source:
+        <a href="https://mapping.emergency.copernicus.eu/"
+           target="_blank">Copernicus Emergency Management Service</a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
