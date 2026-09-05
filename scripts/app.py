@@ -460,7 +460,7 @@ st.title(
 st.caption(
     "Analysis of mapped physical damage, infrastructure impact, "
     "land impact and population exposure across selected "
-    "Copernicus Areas of Interest."
+    "Copernicus Areas of Interest that includes Bidur, Nuwakot; SyapruBesi, Rasuwa; Timure, Rasuwa; Phosretar, Dhading."
 )
 
 
